@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract CostanzaCoin {
+    string public constant name = "Costanza Coin";
+    string public constant symbol = "CC";
+    uint256 public constant totalSupply = 10000000 * 10 ** 18;
+    uint256 public constant fundraisingTarget = 1000000 * 10 ** 18;
+    uint256 public constant communityTreasury = 2000000 * 10 ** 18;
+    uint256 public constant founderSupply = 1000000 * 10 ** 18;
+
+    mapping(address => uint256) public balances;
+    mapping(address => mapping(address => uint256)) public allowed;
+
+    uint256 public fundraisingBalance;
+    uint256 public foundersBalance;
+    address public fundraisingWithdrawalAddress;
+    address public communityManagedWallet;
+    bool public fundraisingClosed = false;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event FundraisingWithdrawalAddressSet(address indexed withdrawalAddress);
+    event CommunityManagedWalletSet(address indexed communityManagedWallet);
+
+    constructor() {
+        balances[msg.sender] = totalSupply - communityTreasury - founderSupply;
+        balances[address(this)] = communityTreasury;
+        balances[0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2] = founderSupply;
+    }
+
+    function transfer(address _to, uint256 _value) public returns (bool success) {
+        require(balances[msg.sender] >= _value, "Insufficient balance");
+        require(_to != address(0), "Invalid address");
+
+        balances[msg.sender] -= _value;
+        balances[_to] += _value;
+
+        emit Transfer(msg.sender, _to, _value);
+        return true;
+    }
+
+    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success) {
+        require(balances[_from] >= _value, "Insufficient balance");
+        require(allowed[_from][msg.sender] >= _value, "Not authorized");
+        require(_to != address(0), "Invalid address");
+
+        balances[_from] -= _value;
+        balances[_to] += _value;
+        allowed[_from][msg.sender] -= _value;
+
+        emit Transfer(_from, _to, _value);
+        return true;
+    }
+
+    function approve(address _spender, uint256 _value) public returns (bool success) {
+        allowed[msg.sender][_spender] = _value;
+
+        emit Approval(msg.sender, _spender, _value);
+        return true;
+    }
+
+    function balanceOf(address _owner) public view returns (uint256 balance) {
+        return balances[_owner];
+    }
+
+    function allowance(address _owner, address _spender) public view returns (uint256 remaining) {
+        return allowed[_owner][_spender];
+    }
+
+    function closeFundraising() public {
+        require(msg.sender == fundraisingWithdrawalAddress, "Not authorized");
+        require(fundraisingBalance >= fundraisingTarget, "Fundraising target not met");
+
+        fundraisingClosed = true;
+        foundersBalance = totalSupply - communityTreasury - fundraisingBalance;
+        balances[address(this)] += foundersBalance;
+    }
+
+    function withdrawFunds() public {
+        require(msg.sender == fundraisingWithdrawalAddress, "Not authorized");
+        require(fundraisingClosed == true, "Fundraising not closed");
+
+        uint256 balance = fundraisingBalance;
+        fundraisingBalance = 0;
+        payable(fundraisingWithdrawalAddress).transfer(balance);
+    }
+
